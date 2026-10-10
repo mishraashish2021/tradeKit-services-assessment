@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: trading_order_system_test
+          MYSQL_USER: laravel
+          MYSQL_PASSWORD: laravel_dev_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: bcmath, pdo_mysql, redis
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: ramsey/composer-install@v3
+
+      - name: Configure test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: trading_order_system_test
+          DB_USERNAME: laravel
+          DB_PASSWORD: laravel_dev_password
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          CACHE_STORE: redis
+
+      - name: Run migrations
+        run: php artisan migrate --force
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: trading_order_system_test
+          DB_USERNAME: laravel
+          DB_PASSWORD: laravel_dev_password
+
+      - name: Check formatting
+        run: ./vendor/bin/pint --test
+
+      - name: Run static analysis
+        run: ./vendor/bin/phpstan analyse --no-progress
+
+      - name: Run tests
+        run: php artisan test
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: trading_order_system_test
+          DB_USERNAME: laravel
+          DB_PASSWORD: laravel_dev_password
+          CACHE_STORE: array
+          QUEUE_CONNECTION: sync

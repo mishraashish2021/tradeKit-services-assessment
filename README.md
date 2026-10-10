@@ -1,58 +1,241 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Trading Order System
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A Laravel-based trading order API demonstrating order placement, wallet reservations, ledger accounting, idempotency, queued execution, cancellation, and market tick processing.
 
-## About Laravel
+## Tech Stack
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **Framework:** Laravel 13
+- **Language:** PHP 8.5
+- **Database:** MySQL 8
+- **Cache / Queue infrastructure:** Redis
+- **Authentication:** Laravel Sanctum
+- **Testing:** PHPUnit
+- **Code quality:** Laravel Pint and PHPStan
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Features
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### Implemented
 
-## Learning Laravel
+- Token-based API authentication.
+- User-specific wallet balances.
+- BUY LIMIT order placement and wallet reservation.
+- User-scoped idempotency keys with request-hash validation.
+- Database transactions and row locking for wallet operations.
+- Reservation and release ledger entries.
+- Queued order execution with duplicate-execution protection.
+- Failed-order handling and reservation release.
+- Order listing, order details, and cancellation.
+- Market tick recording and Redis cache invalidation.
+- Database constraints and indexes for key order operations.
+- Market summary endpoint for tradable assets and latest prices.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+### Known limitations
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+The following features require further implementation or verification before claiming full assessment compliance:
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+- SELL order placement is not supported by the current order service.
+- MARKET orders are explicitly rejected until pricing and reservation logic is implemented.
+- Order creation currently returns HTTP `201 Created`; change this if the assessment requires `202 Accepted`.
+- The idempotency key is currently read from the JSON body as `idempotency_key`, not from the `Idempotency-Key` header.
+- Order listing uses page-based pagination rather than cursor pagination.
+- The market summary does not yet provide all advanced metrics, such as filled-order counts, top-five asset notional, and 24-hour price changes.
+- Ledger immutability and all required concurrent cancellation-versus-execution race scenarios still require verification.
 
-## Agentic Development
+## Requirements
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+- PHP 8.3 or later
+- Composer
+- Docker Desktop
+- MySQL 8
+- Redis 7
+
+## Local Setup
+
+### 1. Install dependencies
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### 2. Configure environment variables
 
-## Contributing
+```bash
+cp .env.example .env
+php artisan key:generate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Update `.env` for the local Docker services:
 
-## Code of Conduct
+```dotenv
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3307
+DB_DATABASE=trading_order_system
+DB_USERNAME=laravel
+DB_PASSWORD=laravel_dev_password
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+REDIS_CLIENT=predis
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+```
 
-## Security Vulnerabilities
+Make sure the project has the Predis package installed if `REDIS_CLIENT=predis` is used. Keep local development credentials out of production deployments.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### 3. Start MySQL and Redis
 
-## License
+```bash
+docker compose up -d
+docker compose ps
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Wait until both services are ready before continuing.
+
+### 4. Run migrations and seed demo data
+
+```bash
+php artisan migrate --seed
+```
+
+Use `php artisan migrate:fresh --seed` only when you intentionally want to drop and recreate all application tables. It deletes existing database data.
+
+### 5. Start the application
+
+In one terminal:
+
+```bash
+php artisan serve
+```
+
+In another terminal, run the queue worker:
+
+```bash
+php artisan queue:work
+```
+
+The market tick simulator can be invoked with:
+
+```bash
+php artisan market:simulate-ticks
+```
+
+The simulator currently runs when invoked; continuous execution requires an appropriate scheduler or repeated invocation.
+
+## Demo Users
+
+The development seeder creates three demo users:
+
+| Email | Password | Initial INR balance |
+|---|---|---:|
+| `trader1@example.com` | `password` | ₹10,000 |
+| `trader2@example.com` | `password` | ₹25,000 |
+| `trader3@example.com` | `password` | ₹50,000 |
+
+Seeded development API tokens:
+
+| User | Bearer token |
+|---|---|
+| Trader 1 | `assessment-trader1-token-2026` |
+| Trader 2 | `assessment-trader2-token-2026` |
+| Trader 3 | `assessment-trader3-token-2026` |
+
+These tokens and passwords are for local assessment testing only. Do not use them in production.
+
+## API Endpoints
+
+Base URL: `http://127.0.0.1:8000/api/v1`
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/login` | Authenticate and obtain an API token |
+| POST | `/logout` | Revoke the current token |
+| GET | `/wallet` | View the authenticated user's wallets |
+| GET | `/market/summary` | Retrieve market summary data |
+| POST | `/orders` | Submit an order |
+| GET | `/orders` | List the authenticated user's orders |
+| GET | `/orders/{order}` | Retrieve an order owned by the user |
+| DELETE | `/orders/{order}` | Cancel an eligible order |
+
+Protected endpoints require a Bearer token:
+
+```http
+Authorization: Bearer YOUR_API_TOKEN
+Accept: application/json
+```
+
+### Example: Submit a BUY LIMIT order
+
+```http
+POST /api/v1/orders
+Content-Type: application/json
+Authorization: Bearer assessment-trader1-token-2026
+```
+
+```json
+{
+  "asset_id": 1,
+  "side": "BUY",
+  "type": "LIMIT",
+  "quantity": "2.00000000",
+  "limit_price": "100.00000000",
+  "idempotency_key": "demo-buy-001"
+}
+```
+
+The current implementation expects `idempotency_key` in the request body. Header-based idempotency must be implemented if required by the assessment.
+
+## Financial Correctness
+
+- Monetary values and quantities use decimal database columns.
+- BCMath is used for financial arithmetic.
+- Wallet operations use database transactions and row locks.
+- Wallet reservation and release operations create ledger entries.
+- A database uniqueness constraint prevents duplicate idempotency keys for the same user.
+- Execution processing has a unique order constraint to prevent duplicate executions.
+
+These safeguards cover the implemented flows; they do not imply that every order type or every concurrency scenario is complete.
+
+## Running Tests
+
+Run the test suite:
+
+```bash
+php artisan test
+```
+
+Configure the test environment to use the dedicated MySQL test database, `trading_order_system_test`, rather than SQLite. Confirm the test database exists and is safe to reset before running database-backed tests.
+
+Run code formatting checks:
+
+```bash
+./vendor/bin/pint --test
+```
+
+Run static analysis:
+
+```bash
+./vendor/bin/phpstan analyse
+```
+
+### Latest verified results
+
+- PHPUnit: **26 tests passed, 100 assertions**
+- PHPStan: **No errors**
+- Laravel Pint: **Passed**
+
+Re-run these commands after the final code changes and record the latest results.
+
+## Database and Engineering Decisions
+
+See [`DECISIONS.md`](DECISIONS.md) for the reasoning behind decimal precision, idempotency, transactional wallet operations, ledger accounting, database indexes, and the observed MySQL `EXPLAIN` results.
+
+## Security Notes
+
+- Use environment variables for credentials.
+- Never commit production secrets or real API tokens.
+- Restrict demo credentials and seeded tokens to local development.
+- Apply authentication and ownership checks to private order and wallet resources.
+- Verify authorization, rate limiting, validation, and production queue configuration before deployment.
+
+## Project Status
+
+This project demonstrates the core BUY LIMIT order workflow and several financial correctness protections. The known limitations above must be resolved or explicitly agreed as out of scope before describing the implementation as fully assessment-compliant.
