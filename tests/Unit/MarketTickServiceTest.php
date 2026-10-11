@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Models\Asset;
+use App\Models\MarketTick;
+use App\Services\MarketPriceCacheRecoveryService;
 use App\Services\MarketTickService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -53,5 +55,45 @@ class MarketTickServiceTest extends TestCase
         );
 
         app(MarketTickService::class)->record($asset->id, '0');
+    }
+
+    public function test_cache_recovery_restores_latest_persisted_market_price(): void
+    {
+        $asset = Asset::factory()->create([
+            'symbol' => 'RECOVERY',
+            'is_tradable' => true,
+        ]);
+
+        $olderTick = MarketTick::create([
+            'asset_id' => $asset->id,
+            'price' => '100.00000000',
+            'recorded_at' => now()->subMinute(),
+        ]);
+
+        $latestTick = MarketTick::create([
+            'asset_id' => $asset->id,
+            'price' => '125.50000000',
+            'recorded_at' => now(),
+        ]);
+
+        // Simulate Redis containing an outdated value.
+        Cache::put("market:latest:{$asset->id}", '100.00000000', 60);
+        Cache::put(
+            "market:latest_at:{$asset->id}",
+            $olderTick->recorded_at->timestamp,
+            60
+        );
+
+        $recoveredCount = app(MarketPriceCacheRecoveryService::class)->recover();
+
+        $this->assertGreaterThanOrEqual(1, $recoveredCount);
+        $this->assertSame(
+            '125.50000000',
+            Cache::get("market:latest:{$asset->id}")
+        );
+        $this->assertSame(
+            $latestTick->recorded_at->timestamp,
+            Cache::get("market:latest_at:{$asset->id}")
+        );
     }
 }

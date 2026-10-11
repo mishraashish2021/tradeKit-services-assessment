@@ -8,3 +8,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an engineering reminder');
 
 Schedule::command('orders:expire')->everyMinute()->withoutOverlapping();
+
+Schedule::command('app:recover-market-price-cache')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();

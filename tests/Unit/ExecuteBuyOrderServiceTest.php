@@ -169,4 +169,61 @@ class ExecuteBuyOrderServiceTest extends TestCase
         $this->assertSame('9820.00000000', $wallet->available_balance);
         $this->assertSame('0.00000000', $wallet->reserved_balance);
     }
+
+    public function test_permanently_failed_job_releases_reserved_funds(): void
+    {
+        $user = User::factory()->create();
+
+        $asset = Asset::factory()->create([
+            'is_tradable' => true,
+        ]);
+
+        $wallet = Wallet::create([
+            'user_id' => $user->id,
+            'currency' => 'INR',
+            'available_balance' => '9800.00000000',
+            'reserved_balance' => '200.00000000',
+        ]);
+
+        $order = Order::create([
+            'uuid' => (string) str()->uuid(),
+            'user_id' => $user->id,
+            'asset_id' => $asset->id,
+            'side' => 'BUY',
+            'type' => 'LIMIT',
+            'quantity' => '2.00000000',
+            'limit_price' => '100.00000000',
+            'status' => 'PENDING',
+            'idempotency_key' => 'permanent-job-failure-001',
+            'request_hash' => hash('sha256', 'permanent-job-failure-001'),
+        ]);
+
+        LedgerEntry::create([
+            'wallet_id' => $wallet->id,
+            'order_id' => $order->id,
+            'type' => 'RESERVATION',
+            'amount' => '-200.00000000',
+            'reserved_amount' => '200.00000000',
+            'balance_after' => '9800.00000000',
+            'reserved_balance_after' => '200.00000000',
+        ]);
+
+        $job = new ExecuteOrderJob($order->id);
+
+        $job->failed(new \RuntimeException('Simulated permanent job failure'));
+
+        $order->refresh();
+        $wallet->refresh();
+
+        $this->assertSame(OrderStatus::FAILED, $order->status);
+        $this->assertSame(
+            'Simulated permanent job failure',
+            $order->failure_reason
+        );
+
+        $this->assertSame('10000.00000000', $wallet->available_balance);
+        $this->assertSame('0.00000000', $wallet->reserved_balance);
+        $this->assertDatabaseCount('ledger_entries', 2);
+        $this->assertDatabaseCount('executions', 0);
+    }
 }

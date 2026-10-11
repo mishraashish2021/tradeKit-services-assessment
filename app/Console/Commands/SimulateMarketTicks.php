@@ -49,6 +49,7 @@ class SimulateMarketTicks extends Command
         );
 
         $cursor = 0;
+        $latestPrices = [];
         $startedAt = microtime(true);
         $deadline = $duration > 0 ? $startedAt + $duration : null;
 
@@ -60,7 +61,8 @@ class SimulateMarketTicks extends Command
                 $asset = $assets[$cursor % $assets->count()];
                 $cursor++;
 
-                $latest = Cache::get("market:latest:{$asset->id}");
+                $latest = $latestPrices[$asset->id]
+                    ?? Cache::get("market:latest:{$asset->id}");
 
                 if (! is_string($latest)) {
                     $latest = $asset->marketTicks()
@@ -74,6 +76,7 @@ class SimulateMarketTicks extends Command
                 }
 
                 $basisPoints = random_int(-100, 100);
+
                 $multiplier = bcadd(
                     '1',
                     bcdiv((string) $basisPoints, '10000', 8),
@@ -92,14 +95,13 @@ class SimulateMarketTicks extends Command
                         'price' => $price,
                     ];
 
-                    Cache::put(
-                        "market:latest:{$asset->id}",
-                        $price,
-                        now()->addDay()
-                    );
+                    // Keep the generated price in memory.
+                    // Redis is updated after database persistence.
+                    $latestPrices[$asset->id] = $price;
                 }
             }
 
+            // Persist the batch before updating Redis.
             $service->recordBatch($batch);
 
             $remaining = 1 - (microtime(true) - $batchStartedAt);
