@@ -52,7 +52,7 @@ class ConcurrentBuyOrderTest extends TestCase
                     'APP_ENV' => 'testing',
                     'DB_CONNECTION' => 'mysql',
                     'DB_HOST' => getenv('DB_HOST') ?: '127.0.0.1',
-                    'DB_PORT' => getenv('DB_PORT') ?: '3307',
+                    'DB_PORT' => getenv('GITHUB_ACTIONS') === 'true' ? '3306' : '3307',
                     'DB_DATABASE' => 'trading_order_system_test',
                     'DB_USERNAME' => getenv('DB_USERNAME') ?: 'laravel',
                     'DB_PASSWORD' => getenv('DB_PASSWORD') ?: 'laravel_dev_password',
