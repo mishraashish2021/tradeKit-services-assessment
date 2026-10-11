@@ -325,8 +325,6 @@ The project includes order placement, execution, cancellation, wallet accounting
 
 The local test suite, PHPStan, and Laravel Pint have passed in the latest reported run. Review the GitHub Actions workflow and remaining assessment requirements before treating the project as fully submission-ready.
 
-
-
 ## AI Tools Disclosure
 
 I used ChatGPT as an AI assistance tool during development for understanding requirements, discussing implementation approaches, debugging issues, preparing test ideas, and improving documentation.
