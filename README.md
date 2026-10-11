@@ -330,3 +330,11 @@ The local test suite, PHPStan, and Laravel Pint have passed in the latest report
 I used ChatGPT as an AI assistance tool during development for understanding requirements, discussing implementation approaches, debugging issues, preparing test ideas, and improving documentation.
 
 I reviewed the suggested changes, ran the automated tests and code quality checks, and validated the OpenAPI specification. The final implementation and its limitations are documented in this repository.
+
+## Time Spent
+
+I spent approximately 15 - 18 hours on this assessment.
+
+Most of the time went into implementing the order placement and execution flow, handling wallet balances and concurrent requests, and testing order cancellation and failure scenarios. I also worked on the market simulator, Redis caching, API responses, and database indexes.
+
+The remaining time was spent writing and validating the API documentation, updating the README and DECISIONS.md, fixing issues found during testing, and checking that the CI workflow passed.
