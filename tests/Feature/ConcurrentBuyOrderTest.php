@@ -58,12 +58,34 @@ class ConcurrentBuyOrderTest extends TestCase
         }
 
         $successCount = 0;
+        $workerFailures = [];
 
-        foreach ($workers as $worker) {
+        foreach ($workers as $index => $worker) {
             if ($worker->isSuccessful()) {
                 $successCount++;
+            } else {
+                $workerFailures[] = sprintf(
+                    "Worker %d failed (exit code: %s)\nSTDOUT: %s\nSTDERR: %s",
+                    $index + 1,
+                    (string) $worker->getExitCode(),
+                    $worker->getOutput(),
+                    $worker->getErrorOutput(),
+                );
             }
         }
+
+        $this->assertSame(
+            20,
+            count($workers),
+            'Expected all 20 worker processes to be created.'
+        );
+
+        $this->assertSame(
+            5,
+            $successCount,
+            "Expected 5 successful orders. Worker failures:\n".
+            implode("\n---\n", $workerFailures),
+        );
 
         $wallet = Wallet::query()
             ->where('user_id', $user->id)
