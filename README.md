@@ -324,3 +324,11 @@ See [`DECISIONS.md`](DECISIONS.md) for the reasoning behind decimal precision, i
 The project includes order placement, execution, cancellation, wallet accounting, market data, API documentation, and automated tests.
 
 The local test suite, PHPStan, and Laravel Pint have passed in the latest reported run. Review the GitHub Actions workflow and remaining assessment requirements before treating the project as fully submission-ready.
+
+
+
+## AI Tools Disclosure
+
+I used ChatGPT as an AI assistance tool during development for understanding requirements, discussing implementation approaches, debugging issues, preparing test ideas, and improving documentation.
+
+I reviewed the suggested changes, ran the automated tests and code quality checks, and validated the OpenAPI specification. The final implementation and its limitations are documented in this repository.
