@@ -32,8 +32,9 @@ class WalletApiTest extends TestCase
 
         $this->getJson('/api/v1/wallet')
             ->assertOk()
-            ->assertJsonPath('data.0.currency', 'INR')
-            ->assertJsonPath('data.0.available_balance', '5000.00000000')
-            ->assertJsonPath('data.0.reserved_balance', '1000.00000000');
+            ->assertJsonPath('data.wallets.0.currency', 'INR')
+            ->assertJsonPath('data.wallets.0.available_balance', '5000.00000000')
+            ->assertJsonPath('data.wallets.0.reserved_balance', '1000.00000000')
+            ->assertJsonPath('data.positions', []);
     }
 }

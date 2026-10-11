@@ -1,8 +1,10 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
+    $this->comment('Keep your code simple, safe, and testable.');
+})->purpose('Display an engineering reminder');
+
+Schedule::command('orders:expire')->everyMinute()->withoutOverlapping();

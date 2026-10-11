@@ -1,0 +1,510 @@
+
+openapi: 3.1.0
+info:
+  title: Trading Order System API
+  version: 1.0.0
+  description: |
+    REST API for trading orders, wallet balances, positions, authentication,
+    and market summaries. Protected endpoints require a Laravel Sanctum
+    bearer token. Order placement requires an Idempotency-Key header.
+
+servers:
+  - url: http://127.0.0.1:8000/api
+    description: Local development server
+
+tags:
+  - name: Authentication
+  - name: Orders
+  - name: Wallet
+  - name: Market
+
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/login:
+    post:
+      tags: [Authentication]
+      summary: Authenticate a user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: Bearer
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /v1/logout:
+    post:
+      tags: [Authentication]
+      summary: Revoke the current access token
+      responses:
+        "200":
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out successfully.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/orders:
+    post:
+      tags: [Orders]
+      summary: Place a trading order
+      description: |
+        Returns HTTP 202 when the order is accepted. The Idempotency-Key
+        header is required. Reusing the key with different request details
+        results in a conflict.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+      responses:
+        "202":
+          description: Order accepted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/OrderResourceResponse"
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Order accepted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Rate limit exceeded
+
+    get:
+      tags: [Orders]
+      summary: List the authenticated user's orders
+      description: Results use cursor-based pagination and are scoped to the authenticated user.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by order status.
+        - name: asset_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Cursor returned by the previous page.
+      responses:
+        "200":
+          description: Paginated orders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedOrders"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /v1/orders/{order}:
+    parameters:
+      - name: order
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Order database ID.
+
+    get:
+      tags: [Orders]
+      summary: Retrieve an order
+      description: Only the owner can view the order. Executions are included.
+      responses:
+        "200":
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResourceResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [Orders]
+      summary: Cancel a pending order
+      description: Cancels an eligible order and releases its reservation.
+      responses:
+        "200":
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/OrderResourceResponse"
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Order cancelled successfully.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Order cannot transition to cancelled state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/wallet:
+    get:
+      tags: [Wallet]
+      summary: Retrieve wallets and positions
+      responses:
+        "200":
+          description: Wallet balances and asset positions for the authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      wallets:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Wallet"
+                      positions:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Position"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/market/summary:
+    get:
+      tags: [Market]
+      summary: Retrieve market summary
+      description: |
+        Returns tradable asset prices, 24-hour price changes, filled order
+        count, and the top five assets by notional volume over the last 24 hours.
+      responses:
+        "200":
+          description: Market summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/MarketSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum token
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique key used to make order placement idempotent.
+      schema:
+        type: string
+        maxLength: 255
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    CreateOrderRequest:
+      type: object
+      required: [asset_id, side, type, quantity]
+      properties:
+        asset_id:
+          type: integer
+        side:
+          type: string
+          enum: [BUY, SELL]
+        type:
+          type: string
+          enum: [LIMIT, MARKET]
+        quantity:
+          type: string
+          pattern: '^\d+(\.\d{1,8})?$'
+          example: "2.50000000"
+        limit_price:
+          type: [string, "null"]
+          pattern: '^\d+(\.\d{1,8})?$'
+          example: "125.50000000"
+      description: |
+        LIMIT orders require limit_price. MARKET orders must omit limit_price.
+        Decimal precision is validated against the selected asset.
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        uuid:
+          type: string
+          format: uuid
+        asset:
+          type: object
+          properties:
+            id:
+              type: [integer, "null"]
+            symbol:
+              type: [string, "null"]
+            name:
+              type: [string, "null"]
+        side:
+          type: string
+          enum: [BUY, SELL]
+        type:
+          type: string
+          enum: [LIMIT, MARKET]
+        quantity:
+          type: string
+        limit_price:
+          type: [string, "null"]
+        status:
+          type: string
+        failure_reason:
+          type: [string, "null"]
+        created_at:
+          type: [string, "null"]
+          format: date-time
+        updated_at:
+          type: [string, "null"]
+          format: date-time
+        executions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Execution"
+
+    Execution:
+      type: object
+      properties:
+        id:
+          type: integer
+        price:
+          type: string
+        quantity:
+          type: string
+        fee:
+          type: string
+        executed_at:
+          type: [string, "null"]
+          format: date-time
+
+    OrderResourceResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Order"
+        message:
+          type: string
+
+    PaginatedOrders:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Order"
+        links:
+          type: object
+          additionalProperties: true
+        meta:
+          type: object
+          additionalProperties: true
+
+    Wallet:
+      type: object
+      properties:
+        currency:
+          type: string
+        available_balance:
+          type: string
+        reserved_balance:
+          type: string
+
+    Position:
+      type: object
+      properties:
+        asset_id:
+          type: integer
+        symbol:
+          type: [string, "null"]
+        name:
+          type: [string, "null"]
+        quantity:
+          type: string
+        reserved_quantity:
+          type: string
+        available_quantity:
+          type: string
+        average_cost:
+          type: string
+
+    MarketSummary:
+      type: object
+      properties:
+        period:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+        filled_orders_24h:
+          type: integer
+        top_assets_by_notional_volume:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            properties:
+              asset_id:
+                type: integer
+              symbol:
+                type: string
+              name:
+                type: string
+              notional_volume:
+                type: string
+        assets:
+          type: array
+          items:
+            type: object
+            properties:
+              asset_id:
+                type: integer
+              symbol:
+                type: string
+              name:
+                type: string
+              latest_price:
+                type: [string, "null"]
+              price_24h_ago:
+                type: [string, "null"]
+              change_24h_percent:
+                type: [string, "null"]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFound:
+      description: Resource not found or inaccessible to this user
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    IdempotencyConflict:
+      description: Idempotency key reused with different request details
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

@@ -66,14 +66,14 @@ class OrderApiTest extends TestCase
 
         Sanctum::actingAs($user);
 
-        $response = $this->postJson(
+        $response = $this->withHeader('Idempotency-Key', 'api-buy-001')->postJson(
             '/api/v1/orders',
             $this->validOrderData($asset->id)
         );
 
         $response
-            ->assertCreated()
-            ->assertJsonPath('message', 'Order placed successfully.')
+            ->assertStatus(202)
+            ->assertJsonPath('message', 'Order accepted.')
             ->assertJsonPath('data.side', 'BUY')
             ->assertJsonPath('data.status', 'PENDING');
 
@@ -90,6 +90,26 @@ class OrderApiTest extends TestCase
         );
 
         $this->assertDatabaseCount('orders', 1);
+    }
+
+    public function test_same_idempotency_header_replays_original_order_and_different_payload_conflicts(): void
+    {
+        [$user, $asset] = $this->createTradingUser();
+        Sanctum::actingAs($user);
+        $headers = ['Idempotency-Key' => 'api-idempotency-001'];
+        $first = $this->withHeaders($headers)->postJson('/api/v1/orders', $this->validOrderData($asset->id));
+        $first->assertStatus(202);
+        $orderId = $first->json('data.id');
+
+        $replay = $this->withHeaders($headers)->postJson('/api/v1/orders', $this->validOrderData($asset->id));
+        $replay->assertStatus(202)->assertJsonPath('data.id', $orderId);
+        $this->assertDatabaseCount('orders', 1);
+
+        $different = $this->validOrderData($asset->id);
+        $different['quantity'] = '3.00000000';
+        $this->withHeaders($headers)->postJson('/api/v1/orders', $different)
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'idempotency_conflict');
     }
 
     public function test_user_cannot_view_another_users_order(): void
@@ -124,7 +144,7 @@ class OrderApiTest extends TestCase
 
         $this->getJson('/api/v1/orders')
             ->assertOk()
-            ->assertJsonPath('total', 0);
+            ->assertJsonCount(0, 'data');
     }
 
     public function test_user_can_cancel_pending_buy_order_and_restore_wallet_balance(): void
@@ -237,7 +257,7 @@ class OrderApiTest extends TestCase
 
         $response = $this->deleteJson("/api/v1/orders/{$order->id}");
 
-        $response->assertUnprocessable();
+        $response->assertConflict();
 
         $this->assertSame('FILLED', $order->fresh()->status->value);
 

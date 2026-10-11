@@ -2,6 +2,7 @@ services:
   mysql:
     image: mysql:8.0
     restart: unless-stopped
+    command: --log-bin-trust-function-creators=1
     environment:
       MYSQL_DATABASE: trading_order_system
       MYSQL_USER: laravel

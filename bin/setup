@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo 'Docker Desktop and Docker Compose are required.' >&2
+  exit 1
+fi
+if ! command -v composer >/dev/null 2>&1; then
+  echo 'Composer is required. Install Composer and rerun this script.' >&2
+  exit 1
+fi
+
+docker compose up -d --wait
+composer install
+if [ ! -f .env ]; then
+  cp .env.example .env
+fi
+php artisan key:generate
+php artisan migrate --seed --force
+
+echo 'Setup complete. Start the API with: php artisan serve'

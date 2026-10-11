@@ -68,6 +68,12 @@ class Order extends Model
         return $this->hasOne(Execution::class);
     }
 
+    /** @return HasMany<Execution, $this> */
+    public function executions(): HasMany
+    {
+        return $this->hasMany(Execution::class);
+    }
+
     /** @return HasMany<LedgerEntry, $this> */
     public function ledgerEntries(): HasMany
     {

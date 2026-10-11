@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property-read numeric-string|null $latest_price
+ * @property-read numeric-string|null $reference_price
  */
 class Asset extends Model
 {

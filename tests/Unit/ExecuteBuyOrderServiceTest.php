@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\ExecuteBuyOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class ExecuteBuyOrderServiceTest extends TestCase
@@ -66,6 +67,7 @@ class ExecuteBuyOrderServiceTest extends TestCase
             'price' => '90.00000000',
             'recorded_at' => now(),
         ]);
+        Cache::put("market:latest:{$asset->id}", '90.00000000', 60);
 
         $service = app(ExecuteBuyOrderService::class);
 
@@ -151,6 +153,7 @@ class ExecuteBuyOrderServiceTest extends TestCase
             'price' => '90.00000000',
             'recorded_at' => now(),
         ]);
+        Cache::put("market:latest:{$asset->id}", '90.00000000', 60);
 
         $job = new ExecuteOrderJob($order->id);
 

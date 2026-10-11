@@ -14,6 +14,13 @@ class Execution extends Model
 {
     public $timestamps = false;
 
+    protected $fillable = ['order_id', 'price', 'quantity', 'fee', 'executed_at'];
+
+    protected function casts(): array
+    {
+        return ['price' => 'decimal:8', 'quantity' => 'decimal:8', 'fee' => 'decimal:8', 'executed_at' => 'datetime'];
+    }
+
     /** @return BelongsTo<Order, $this> */
     public function order(): BelongsTo
     {

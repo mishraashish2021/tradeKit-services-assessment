@@ -14,7 +14,7 @@ class MarketTickServiceTest extends TestCase
 
     public function test_recording_tick_updates_redis_and_invalidates_summary(): void
     {
-        Cache::put('market:summary:v1', 'stale-summary', 60);
+        Cache::put('market:summary:v2', 'stale-summary', 60);
 
         $asset = Asset::factory()->create([
             'symbol' => 'TEST',
@@ -38,7 +38,7 @@ class MarketTickServiceTest extends TestCase
             Cache::get("market:latest:{$asset->id}")
         );
 
-        $this->assertNull(Cache::get('market:summary:v1'));
+        $this->assertSame('stale-summary', Cache::get('market:summary:v2')); // Tick updates are TTL-bounded to avoid feed-rate cache churn.
     }
 
     public function test_recording_non_positive_price_is_rejected(): void

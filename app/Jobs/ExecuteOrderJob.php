@@ -17,9 +17,10 @@ class ExecuteOrderJob implements ShouldQueue
     /** @var array<int, int> */
     public array $backoff = [1, 5, 15];
 
-    public function __construct(
-        public int $orderId
-    ) {}
+    public function __construct(public int $orderId)
+    {
+        $this->onQueue('orders');
+    }
 
     public function handle(ExecuteBuyOrderService $service): void
     {

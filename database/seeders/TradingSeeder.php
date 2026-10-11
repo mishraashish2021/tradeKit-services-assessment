@@ -8,6 +8,7 @@ use App\Models\MarketTick;
 use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -130,6 +131,20 @@ class TradingSeeder extends Seeder
                         ],
                         ['price' => $price]
                     );
+                }
+
+                // Publish a fresh current tick so MARKET orders can be exercised immediately after seeding.
+                $currentTickTime = now();
+                MarketTick::firstOrCreate(
+                    ['asset_id' => $asset->id, 'recorded_at' => $currentTickTime],
+                    ['price' => $data['price']]
+                );
+
+                $latestPrice = MarketTick::query()->where('asset_id', $asset->id)->orderByDesc('recorded_at')->orderByDesc('id')->value('price');
+                if (is_string($latestPrice)) {
+                    Cache::put("market:latest:{$asset->id}", $latestPrice, now()->addDay());
+                    $latestAt = MarketTick::query()->where('asset_id', $asset->id)->orderByDesc('recorded_at')->orderByDesc('id')->value('recorded_at');
+                    Cache::put("market:latest_at:{$asset->id}", $latestAt ? strtotime((string) $latestAt) : now()->timestamp, now()->addDay());
                 }
             }
         });

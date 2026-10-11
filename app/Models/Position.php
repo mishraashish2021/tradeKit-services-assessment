@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Position extends Model
 {
+    protected $fillable = ['user_id', 'asset_id', 'quantity', 'reserved_quantity', 'average_cost'];
+
     /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
     {
