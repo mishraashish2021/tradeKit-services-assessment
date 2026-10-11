@@ -39,13 +39,25 @@ class ConcurrentBuyOrderTest extends TestCase
         $workers = [];
 
         for ($i = 1; $i <= 20; $i++) {
-            $workers[] = new Process([
-                PHP_BINARY,
-                base_path('tests/Support/concurrent_buy_worker.php'),
-                (string) $user->id,
-                (string) $asset->id,
-                "concurrent-buy-{$i}",
-            ], base_path());
+            $workers[] = new Process(
+                [
+                    PHP_BINARY,
+                    base_path('tests/Support/concurrent_buy_worker.php'),
+                    (string) $user->id,
+                    (string) $asset->id,
+                    "concurrent-buy-{$i}",
+                ],
+                base_path(),
+                [
+                    'APP_ENV' => 'testing',
+                    'DB_CONNECTION' => 'mysql',
+                    'DB_HOST' => getenv('DB_HOST') ?: '127.0.0.1',
+                    'DB_PORT' => getenv('DB_PORT') ?: '3307',
+                    'DB_DATABASE' => 'trading_order_system_test',
+                    'DB_USERNAME' => getenv('DB_USERNAME') ?: 'laravel',
+                    'DB_PASSWORD' => getenv('DB_PASSWORD') ?: 'laravel_dev_password',
+                ]
+            );
         }
 
         // Start all workers before waiting for any one worker.
@@ -63,22 +75,18 @@ class ConcurrentBuyOrderTest extends TestCase
         foreach ($workers as $index => $worker) {
             if ($worker->isSuccessful()) {
                 $successCount++;
-            } else {
-                $workerFailures[] = sprintf(
-                    "Worker %d failed (exit code: %s)\nSTDOUT: %s\nSTDERR: %s",
-                    $index + 1,
-                    (string) $worker->getExitCode(),
-                    $worker->getOutput(),
-                    $worker->getErrorOutput(),
-                );
-            }
-        }
 
-        $this->assertSame(
-            20,
-            count($workers),
-            'Expected all 20 worker processes to be created.'
-        );
+                continue;
+            }
+
+            $workerFailures[] = sprintf(
+                "Worker %d failed (exit code: %s)\nSTDOUT: %s\nSTDERR: %s",
+                $index + 1,
+                (string) $worker->getExitCode(),
+                $worker->getOutput(),
+                $worker->getErrorOutput(),
+            );
+        }
 
         $this->assertSame(
             5,
@@ -92,11 +100,11 @@ class ConcurrentBuyOrderTest extends TestCase
             ->where('currency', 'INR')
             ->firstOrFail();
 
-        $this->assertSame(5, $successCount);
         $this->assertSame(
             '0.00000000',
             $wallet->fresh()->available_balance
         );
+
         $this->assertSame(
             '1000.00000000',
             $wallet->fresh()->reserved_balance

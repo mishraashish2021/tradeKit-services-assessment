@@ -9,23 +9,30 @@ require dirname(__DIR__, 2).'/vendor/autoload.php';
 $app = require dirname(__DIR__, 2).'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 
-// Ensure child workers use the database connection from the CI environment.
-config([
-    'database.connections.mysql.host' => getenv('DB_HOST') ?: '127.0.0.1',
-    'database.connections.mysql.port' => getenv('DB_PORT') ?: '3306',
-    'database.connections.mysql.database' => getenv('DB_DATABASE') ?: 'trading_order_system_test',
-    'database.connections.mysql.username' => getenv('DB_USERNAME') ?: 'laravel',
-    'database.connections.mysql.password' => getenv('DB_PASSWORD') ?: 'laravel_dev_password',
-]);
+// Read the connection settings passed to this child process.
+$databaseConfig = [
+    'host' => getenv('DB_HOST') ?: '127.0.0.1',
+    'port' => getenv('DB_PORT') ?: '3306',
+    'database' => getenv('DB_DATABASE') ?: 'trading_order_system_test',
+    'username' => getenv('DB_USERNAME') ?: 'laravel',
+    'password' => getenv('DB_PASSWORD') ?: 'laravel_dev_password',
+];
 
-DB::purge('mysql');
-
-$database = config('database.connections.mysql.database');
-
-if ($database !== 'trading_order_system_test') {
+if ($databaseConfig['database'] !== 'trading_order_system_test') {
     fwrite(STDERR, "Refusing to run outside the test database.\n");
     exit(2);
 }
+
+config([
+    'database.default' => 'mysql',
+    'database.connections.mysql.host' => $databaseConfig['host'],
+    'database.connections.mysql.port' => $databaseConfig['port'],
+    'database.connections.mysql.database' => $databaseConfig['database'],
+    'database.connections.mysql.username' => $databaseConfig['username'],
+    'database.connections.mysql.password' => $databaseConfig['password'],
+]);
+
+DB::purge('mysql');
 
 $userId = (int) ($argv[1] ?? 0);
 $assetId = (int) ($argv[2] ?? 0);
