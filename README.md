@@ -1,6 +1,6 @@
 # Trading Order System
 
-A Laravel-based trading order API demonstrating order placement, wallet reservations, ledger accounting, idempotency, queued execution, cancellation, and market tick processing.
+A Laravel-based trading order API demonstrating reliable order placement, wallet reservations, ledger accounting, idempotency, queued execution, cancellation, market data processing, and recovery from failures.
 
 ## Tech Stack
 
@@ -39,7 +39,7 @@ A Laravel-based trading order API demonstrating order placement, wallet reservat
 
 - Decimal database columns and BCMath arithmetic for financial calculations.
 - Database transactions and row locking for wallet operations.
-- Wallet balance reservation and release.
+- Wallet balance and position reservation and release.
 - Ledger entries for financial movements.
 - Duplicate-execution protection.
 - Ledger reconciliation support.
@@ -48,21 +48,32 @@ A Laravel-based trading order API demonstrating order placement, wallet reservat
 ### Market Data
 
 - Market tick recording and Redis-based latest prices.
-- Cache invalidation for market summary updates.
+- Batched market tick inserts.
 - Market summary for tradable assets.
 - Latest prices and 24-hour price changes.
 - Filled-order counts over the last 24 hours.
 - Top five assets by notional trading volume.
-- Configurable market tick simulation with batched inserts.
+- Cache invalidation when market data changes.
+- Recovery of cached market prices and timestamps from persisted market ticks.
+
+### Reliability and Failure Handling
+
+- Database persistence before updating the latest-price cache in the market simulator.
+- Scheduled recovery of market prices from persisted ticks.
+- Transactional order cancellation and execution.
+- Protection against duplicate financial movements.
+- Release of reserved funds when an order permanently fails.
+- Automated tests for concurrent cancellation and execution.
+- Recovery and wallet-consistency tests for important failure scenarios.
 
 ## Requirements
 
-- PHP 8.3 or later, with the required PHP extensions.
-- Composer
-- Docker Desktop
-- MySQL 8
-- Redis 7
-- BCMath PHP extension
+- PHP 8.3 or later with the required PHP extensions.
+- Composer.
+- Docker Desktop.
+- MySQL 8.
+- Redis 7.
+- BCMath PHP extension.
 
 ## Local Setup
 
@@ -73,6 +84,8 @@ composer install
 ```
 
 ### 2. Configure environment variables
+
+Copy the example environment file and generate an application key:
 
 ```bash
 cp .env.example .env
@@ -94,7 +107,9 @@ REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 ```
 
-Ensure the Predis package is installed when using `REDIS_CLIENT=predis`. These credentials are for local development only; use appropriate secrets and credentials in other environments.
+Ensure the Predis package is installed when using `REDIS_CLIENT=predis`.
+
+These credentials are for local development only. Use appropriate secrets and credentials in other environments.
 
 ### 3. Start MySQL and Redis
 
@@ -121,7 +136,7 @@ In one terminal:
 php artisan serve
 ```
 
-In another terminal:
+In another terminal, start the queue worker:
 
 ```bash
 php artisan queue:work
@@ -143,7 +158,33 @@ php artisan market:simulate --rate=50 --duration=60
 
 The default rate is 50 ticks per second across all tradable assets. A duration of `0` runs continuously until the process is stopped.
 
-For ongoing environments, configure the simulator and queue workers using the appropriate process supervisor or deployment setup.
+For ongoing environments, configure the simulator and queue workers using an appropriate process supervisor or deployment setup.
+
+### 7. Recover cached market prices
+
+The recovery command restores the latest cached market prices and timestamps from persisted market ticks for tradable assets.
+
+Run it manually:
+
+```bash
+php artisan app:recover-market-price-cache
+```
+
+Check the registered Laravel scheduled commands:
+
+```bash
+php artisan schedule:list
+```
+
+The market-price cache recovery command is scheduled every five minutes. The order-expiry command is scheduled every minute.
+
+In production, configure Laravel's scheduler to run, for example, by adding the following cron entry:
+
+```cron
+* * * * * cd /path/to/trading-order-system && php artisan schedule:run >> /dev/null 2>&1
+```
+
+Replace `/path/to/trading-order-system` with the actual application path. Ensure the scheduler runs under the appropriate operating-system user.
 
 ## Demo Users
 
@@ -163,18 +204,15 @@ The development seeder creates three demo users:
 | Trader 2 | `assessment-trader2-token-2026` |
 | Trader 3 | `assessment-trader3-token-2026` |
 
-**Note:** These credentials and tokens are intended for local development and assessment testing only. Do not use them in production.
+**Security note:** These credentials and tokens are intended for local development and assessment testing only. Do not use them in production.
 
-
-The database seeder provides development data for testing. Refer to `database/seeders/TradingSeeder.php` for the current demo users, initial balances, and seeded assets.
-
-Use the login endpoint to obtain a bearer token. Any seeded credentials or tokens should be restricted to local assessment use and must not be used in production.
+Use the login endpoint to obtain a bearer token. Refer to `database/seeders/TradingSeeder.php` for the current demo users, initial balances, and seeded assets.
 
 ## API Documentation
 
 **OpenAPI specification:** [`openapi.yaml`](openapi.yaml)
 
-Base URL:
+**Base URL:**
 
 ```text
 http://127.0.0.1:8000/api/v1
@@ -202,11 +240,15 @@ Accept: application/json
 
 ### Example: Login
 
+Request:
+
 ```http
 POST /api/v1/login
 Content-Type: application/json
 Accept: application/json
 ```
+
+Body:
 
 ```json
 {
@@ -215,9 +257,11 @@ Accept: application/json
 }
 ```
 
-Use the credentials configured by the development seeder.
+Use the credentials configured by the development seeder. The login response provides the token for authenticated API requests.
 
 ### Example: Place a BUY LIMIT order
+
+Request:
 
 ```http
 POST /api/v1/orders
@@ -226,6 +270,8 @@ Accept: application/json
 Authorization: Bearer YOUR_API_TOKEN
 Idempotency-Key: demo-buy-001
 ```
+
+Body:
 
 ```json
 {
@@ -237,11 +283,13 @@ Idempotency-Key: demo-buy-001
 }
 ```
 
-The idempotency key is supplied in the HTTP header, not the JSON body. Repeating a request with the same key and identical details should not create a duplicate order. Reusing that key with different details is rejected.
+The idempotency key is supplied in the HTTP header, not in the JSON body.
+
+Repeating a request with the same key and identical details should not create a duplicate order. Reusing the key with different details is rejected.
 
 ### Order listing and filtering
 
-The order listing endpoint supports cursor-based pagination.
+The order listing endpoint supports cursor-based pagination and filtering.
 
 Example:
 
@@ -253,6 +301,8 @@ Use the cursor returned by the previous response to retrieve the next page. The 
 
 ### Market summary
 
+Request:
+
 ```http
 GET /api/v1/market/summary
 Authorization: Bearer YOUR_API_TOKEN
@@ -261,13 +311,35 @@ Accept: application/json
 
 The summary includes the reporting period, filled-order count, top five assets by notional volume, and tradable asset price information.
 
+Refer to `openapi.yaml` for the documented request parameters, response schemas, and error responses.
+
 ## Financial Correctness and Concurrency
 
-The implementation uses transactions, row locking, decimal arithmetic, and database constraints to protect important financial operations.
+Financial operations require consistent wallet balances, accurate ledger entries, and protection against duplicate processing.
 
-Order execution and cancellation must preserve reservation consistency and prevent duplicate financial movements. The automated tests cover selected duplicate-execution, reservation-release, idempotency, and concurrent-buy-order scenarios.
+The implementation uses:
 
-The reconciliation command can be used to check wallet ledger consistency:
+- Database transactions for related financial updates.
+- Row locking to coordinate concurrent operations.
+- Decimal database columns and BCMath for financial calculations.
+- Idempotency checks to prevent duplicate order creation.
+- Reservation and release operations for wallet funds and positions.
+- Duplicate-execution protection.
+- Database constraints and indexes for important operations.
+
+Order execution and cancellation must preserve reservation consistency. The automated tests verify selected concurrent cancellation and execution scenarios, including the resulting order status, execution records, wallet balances, and ledger entries.
+
+### Permanent Job Failure
+
+Queued order execution uses retry and backoff settings. When a job permanently fails, its failure handler invokes the order failure service to mark the eligible order as failed and release reserved funds.
+
+The tests cover the failure handler's reservation-release behavior and verify that the funds are not released twice.
+
+### Ledger Reconciliation
+
+The application includes a ledger reconciliation command for checking wallet and ledger consistency.
+
+Inspect the available command and options with:
 
 ```bash
 php artisan list
@@ -297,13 +369,30 @@ Run PHPStan:
 
 Use a dedicated test database configured for the test environment. Confirm it is safe to reset before running database-backed tests.
 
-### Latest verified local results
+### Concurrency Test
 
-- **PHPUnit:** 36 tests passed, 142 assertions.
+Run the concurrent cancellation and execution test independently:
+
+```bash
+php artisan test --filter=test_concurrent_cancellation_and_execution_preserve_order_and_wallet_consistency
+```
+
+The concurrency test uses separate PHP processes and a dedicated MySQL test database. The worker refuses to run unless the configured database name is `trading_order_system_test`.
+
+The test should be run only against the intended test environment, never against a production database.
+
+### Latest Verified Results
+
+The latest reported local validation results are:
+
+- **PHPUnit:** 39 tests passed, 160 assertions.
 - **PHPStan:** No errors.
-- **Laravel Pint:** 97 files passed.
+- **Laravel Pint:** 100 files passed.
+- **Concurrency test:** Passed five consecutive runs.
+- **Git diff check:** No errors reported.
+- **GitHub Actions CI:** Passed, as confirmed during development.
 
-These results reflect the latest test and code-quality outputs shared during development. Rerun all checks after further code changes.
+These results reflect the latest verified run. Rerun the checks after further code changes.
 
 ## Database and Engineering Decisions
 
@@ -313,28 +402,34 @@ See [`DECISIONS.md`](DECISIONS.md) for the reasoning behind decimal precision, i
 
 - Keep credentials and secrets in environment variables.
 - Never commit production secrets or real API tokens.
-- Restrict seeded credentials to local development.
+- Restrict seeded credentials and tokens to local development.
 - Enforce authentication and ownership checks for private resources.
 - Use appropriate rate limits and request validation.
-- Configure queue workers, Redis, database credentials, and logging appropriately for deployment.
-- Review the migration and database constraints before deploying to a production database.
+- Configure queue workers, Redis, database credentials, logging, and the scheduler appropriately for deployment.
+- Review migrations and database constraints before deploying to a production database.
+- Use a dedicated test database for automated tests.
+- Do not expose development credentials or test infrastructure to public environments.
 
 ## Project Status
 
-The project includes order placement, execution, cancellation, wallet accounting, market data, API documentation, and automated tests.
+The project implements order placement, execution, cancellation, wallet accounting, ledger tracking, market data processing, cache recovery, API documentation, and automated tests.
 
-The local test suite, PHPStan, and Laravel Pint have passed in the latest reported run. Review the GitHub Actions workflow and remaining assessment requirements before treating the project as fully submission-ready.
+The latest reported local checks include 39 passing tests with 160 assertions, PHPStan with no errors, and Laravel Pint passing for 100 files. The GitHub Actions CI workflow has also passed.
+
+The project includes automated coverage for idempotency, wallet reservation and release, duplicate execution protection, permanent job failure handling, and concurrent cancellation and execution.
+
+Production deployment still requires appropriate database, Redis, queue-worker, scheduler, credentials, and security configuration.
 
 ## AI Tools Disclosure
 
 I used ChatGPT as an AI assistance tool during development for understanding requirements, discussing implementation approaches, debugging issues, preparing test ideas, and improving documentation.
 
-I reviewed the suggested changes, ran the automated tests and code quality checks, and validated the OpenAPI specification. The final implementation and its limitations are documented in this repository.
+I reviewed the suggested changes, ran automated tests and code quality checks, and validated the OpenAPI specification. The final implementation and its limitations are documented in this repository.
 
 ## Time Spent
 
-I spent approximately 15 - 18 hours on this assessment.
+I spent approximately 15–18 hours on this assessment.
 
 Most of the time went into implementing the order placement and execution flow, handling wallet balances and concurrent requests, and testing order cancellation and failure scenarios. I also worked on the market simulator, Redis caching, API responses, and database indexes.
 
-The remaining time was spent writing and validating the API documentation, updating the README and DECISIONS.md, fixing issues found during testing, and checking that the CI workflow passed.
+The remaining time was spent writing and validating API documentation, updating the README and `DECISIONS.md`, fixing issues found during testing, and checking that the CI workflow passed.
